@@ -14,7 +14,7 @@ export default function DashboardLayout({
 }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, isAuthLoading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
@@ -22,12 +22,12 @@ export default function DashboardLayout({
     }, []);
 
     useEffect(() => {
-        if (mounted && !isAuthenticated) {
+        if (mounted && !isAuthLoading && !isAuthenticated) {
             router.push('/auth/login');
         }
-    }, [mounted, isAuthenticated, router]);
+    }, [mounted, isAuthenticated, isAuthLoading, router]);
 
-    if (!mounted || !isAuthenticated) {
+    if (!mounted || isAuthLoading || !isAuthenticated) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <Loader />

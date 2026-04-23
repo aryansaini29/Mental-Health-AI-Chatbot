@@ -78,8 +78,8 @@ export default function Sidebar({ isOpen, onClose }: Props) {
             {/* Logout */}
             <div className="p-4 border-t border-gray-200/50 dark:border-white/5">
                 <button
-                    onClick={() => {
-                        logout();
+                    onClick={async () => {
+                        await logout();
                         onClose();
                     }}
                     className="flex items-center gap-3 w-full px-4 py-3 rounded-2xl hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"

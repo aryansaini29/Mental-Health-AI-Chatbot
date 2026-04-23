@@ -18,7 +18,7 @@ export default function LoginPage() {
     const { login } = useAuth();
     const { showToast } = useToast();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email || !password) {
             showToast('Please fill in all fields', 'error');
@@ -26,16 +26,14 @@ export default function LoginPage() {
         }
 
         setLoading(true);
-        setTimeout(() => {
-            const success = login(email, password);
-            if (success) {
-                showToast('Welcome back!', 'success');
-                router.push('/dashboard/chat');
-            } else {
-                showToast('Invalid email or password', 'error');
-            }
-            setLoading(false);
-        }, 800);
+        const result = await login(email, password);
+        if (result.success) {
+            showToast('Welcome back!', 'success');
+            router.push('/dashboard/chat');
+        } else {
+            showToast(result.error || 'Invalid email or password', 'error');
+        }
+        setLoading(false);
     };
 
     return (

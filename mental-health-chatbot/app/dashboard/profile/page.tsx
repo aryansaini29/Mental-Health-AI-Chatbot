@@ -24,12 +24,18 @@ export default function ProfilePage() {
     const [editName, setEditName] = useState(user?.name || '');
     const [editEmail, setEditEmail] = useState(user?.email || '');
 
-    const handleSaveProfile = () => {
+    const handleSaveProfile = async () => {
         if (!editName || !editEmail) {
             showToast('Please fill in all fields', 'error');
             return;
         }
-        updateProfile({ name: editName, email: editEmail });
+
+        const result = await updateProfile({ name: editName, email: editEmail });
+        if (!result.success) {
+            showToast(result.error || 'Unable to update profile', 'error');
+            return;
+        }
+
         showToast('Profile updated successfully!', 'success');
         setShowEditModal(false);
     };

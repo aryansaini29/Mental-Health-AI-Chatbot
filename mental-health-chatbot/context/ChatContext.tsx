@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { generateId, getAIResponse, detectEmotion } from '@/lib/utils';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/context/AuthContext';
 
 export interface ChatMessage {
     id: string;
@@ -43,6 +45,7 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
@@ -51,12 +54,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         try {
-            const storedConversations = localStorage.getItem('mhc_conversations');
-            if (storedConversations) setConversations(JSON.parse(storedConversations));
-
-            const storedMoods = localStorage.getItem('mhc_moods');
-            if (storedMoods) setMoodHistory(JSON.parse(storedMoods));
-
             const storedPrivacy = localStorage.getItem('mhc_privacy');
             if (storedPrivacy === 'true') setPrivacyAccepted(true);
         } catch {
@@ -64,12 +61,98 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    useEffect(() => {
+        const supabase = getSupabaseBrowserClient();
+
+        if (!user?.id || !supabase) {
+            setConversations([]);
+            setMoodHistory([]);
+            setMessages([]);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadUserData = async () => {
+            const { data: convRows, error: convError } = await supabase
+                .from('conversations')
+                .select('id, created_at, emotion, preview')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (convError) {
+                console.warn('Unable to load conversations from Supabase:', convError.message);
+            }
+
+            let hydratedConversations: Conversation[] = [];
+
+            if (convRows && convRows.length > 0) {
+                const conversationIds = convRows.map((c) => c.id);
+                const { data: messageRows, error: messageError } = await supabase
+                    .from('messages')
+                    .select('id, conversation_id, sender, content, emotion, created_at')
+                    .in('conversation_id', conversationIds)
+                    .order('created_at', { ascending: true });
+
+                if (messageError) {
+                    console.warn('Unable to load messages from Supabase:', messageError.message);
+                }
+
+                hydratedConversations = convRows.map((conv) => ({
+                    id: conv.id,
+                    date: conv.created_at,
+                    emotion: conv.emotion || '😐 Neutral',
+                    preview: conv.preview || '',
+                    messages:
+                        messageRows
+                            ?.filter((m) => m.conversation_id === conv.id)
+                            .map((m) => ({
+                                id: m.id,
+                                content: m.content,
+                                sender: m.sender,
+                                timestamp: m.created_at,
+                                emotion: m.emotion || undefined,
+                            })) || [],
+                }));
+            }
+
+            const { data: moodRows, error: moodError } = await supabase
+                .from('mood_entries')
+                .select('id, mood, emoji, note, created_at')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (moodError) {
+                console.warn('Unable to load mood history from Supabase:', moodError.message);
+            }
+
+            if (!cancelled) {
+                setConversations(hydratedConversations);
+                setMoodHistory(
+                    (moodRows || []).map((entry) => ({
+                        id: entry.id,
+                        mood: entry.mood,
+                        emoji: entry.emoji,
+                        note: entry.note || undefined,
+                        date: entry.created_at,
+                    }))
+                );
+            }
+        };
+
+        void loadUserData();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [user?.id]);
+
     const acceptPrivacy = () => {
         setPrivacyAccepted(true);
         localStorage.setItem('mhc_privacy', 'true');
     };
 
-    const sendMessage = useCallback((content: string) => {
+    const sendMessage = useCallback(async (content: string) => {
         const userMessage: ChatMessage = {
             id: generateId(),
             content,
@@ -81,7 +164,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setMessages((prev) => [...prev, userMessage]);
         setIsTyping(true);
 
-        setTimeout(() => {
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: content,
+                    history: [...messages, userMessage].slice(-12),
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Gemini request failed');
+            }
+
+            const data = (await response.json()) as { reply?: string };
+            const aiResponse: ChatMessage = {
+                id: generateId(),
+                content: data.reply || getAIResponse(content),
+                sender: 'ai',
+                timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, aiResponse]);
+        } catch {
             const aiResponse: ChatMessage = {
                 id: generateId(),
                 content: getAIResponse(content),
@@ -90,33 +198,69 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             };
 
             setMessages((prev) => [...prev, aiResponse]);
+        } finally {
             setIsTyping(false);
-        }, 1200 + Math.random() * 1500);
-    }, []);
+        }
+    }, [messages]);
 
     const startNewConversation = useCallback(() => {
-        if (messages.length > 0) {
-            const lastUserMsg = messages.filter((m) => m.sender === 'user').pop();
-            const conv: Conversation = {
-                id: generateId(),
-                date: new Date().toISOString(),
-                messages: [...messages],
-                emotion: lastUserMsg?.emotion || '😐 Neutral',
-                preview: messages[0]?.content.substring(0, 80) + '...',
-            };
+        if (!user?.id || messages.length === 0) return;
 
-            const updated = [conv, ...conversations];
-            setConversations(updated);
-            localStorage.setItem('mhc_conversations', JSON.stringify(updated));
-            setMessages([]);
-        }
-    }, [messages, conversations]);
+        const lastUserMsg = messages.filter((m) => m.sender === 'user').pop();
+        const conversationId = crypto.randomUUID();
+        const conversationDate = new Date().toISOString();
+        const conversationPreview = messages[0]?.content.substring(0, 80) + '...';
+
+        const conv: Conversation = {
+            id: conversationId,
+            date: conversationDate,
+            messages: [...messages],
+            emotion: lastUserMsg?.emotion || '😐 Neutral',
+            preview: conversationPreview,
+        };
+
+        setConversations((prev) => [conv, ...prev]);
+        setMessages([]);
+
+        void (async () => {
+            const supabase = getSupabaseBrowserClient();
+            if (!supabase) return;
+
+            const { error: conversationError } = await supabase.from('conversations').insert({
+                id: conversationId,
+                user_id: user.id,
+                created_at: conversationDate,
+                emotion: conv.emotion,
+                preview: conversationPreview,
+            });
+
+            if (conversationError) {
+                console.warn('Unable to save conversation:', conversationError.message);
+                return;
+            }
+
+            const messageRows = messages.map((msg) => ({
+                conversation_id: conversationId,
+                sender: msg.sender,
+                content: msg.content,
+                emotion: msg.emotion || null,
+                created_at: msg.timestamp,
+            }));
+
+            const { error: messagesError } = await supabase.from('messages').insert(messageRows);
+            if (messagesError) {
+                console.warn('Unable to save messages:', messagesError.message);
+            }
+        })();
+    }, [messages, user?.id]);
 
     const clearChat = useCallback(() => {
         startNewConversation();
     }, [startNewConversation]);
 
     const saveMood = useCallback((mood: string, emoji: string, note?: string) => {
+        if (!user?.id) return;
+
         const entry: MoodEntry = {
             id: generateId(),
             mood,
@@ -127,10 +271,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         setMoodHistory((prev) => {
             const updated = [entry, ...prev];
-            localStorage.setItem('mhc_moods', JSON.stringify(updated));
             return updated;
         });
-    }, []);
+
+        void (async () => {
+            const supabase = getSupabaseBrowserClient();
+            if (!supabase) return;
+
+            const { error } = await supabase.from('mood_entries').insert({
+                user_id: user.id,
+                mood,
+                emoji,
+                note: note || null,
+                created_at: entry.date,
+            });
+
+            if (error) {
+                console.warn('Unable to save mood entry:', error.message);
+            }
+        })();
+    }, [user?.id]);
 
     return (
         <ChatContext.Provider

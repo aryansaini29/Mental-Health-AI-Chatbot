@@ -20,6 +20,20 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Supabase Setup
+
+1. Create a Supabase project.
+2. In Supabase SQL Editor, run the SQL in `supabase/schema.sql`.
+3. Create `mental-health-chatbot/.env.local` with:
+
+NEXT_PUBLIC_SUPABASE_URL=your_project_url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_or_anon_key
+
+4. In Supabase Authentication settings, configure your site URL and allowed redirect URLs.
+5. Restart the dev server.
+
+After this, authentication, chat history, and mood entries are stored in Supabase with row-level security.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

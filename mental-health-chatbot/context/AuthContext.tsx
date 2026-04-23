@@ -1,96 +1,185 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface User {
+    id: string;
     name: string;
     email: string;
     avatar?: string;
     joinedDate: string;
 }
 
+interface AuthActionResult {
+    success: boolean;
+    error?: string;
+    requiresEmailVerification?: boolean;
+}
+
 interface AuthContextType {
     user: User | null;
+    isAuthLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => boolean;
-    register: (name: string, email: string, password: string) => boolean;
-    logout: () => void;
-    updateProfile: (data: Partial<User>) => void;
+    login: (email: string, password: string) => Promise<AuthActionResult>;
+    register: (name: string, email: string, password: string) => Promise<AuthActionResult>;
+    logout: () => Promise<void>;
+    updateProfile: (data: Partial<User>) => Promise<AuthActionResult>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function toAppUser(supabaseUser: SupabaseUser): User {
+    const metadata = supabaseUser.user_metadata || {};
+    const fallbackName = supabaseUser.email?.split('@')[0] || 'User';
+
+    return {
+        id: supabaseUser.id,
+        name: metadata.full_name || fallbackName,
+        email: supabaseUser.email || '',
+        avatar: metadata.avatar_url,
+        joinedDate: supabaseUser.created_at || new Date().toISOString(),
+    };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
 
     useEffect(() => {
-        const stored = localStorage.getItem('mhc_user');
-        if (stored) {
-            try {
-                setUser(JSON.parse(stored));
-            } catch {
-                localStorage.removeItem('mhc_user');
-            }
+        const supabase = getSupabaseBrowserClient();
+
+        if (!supabase) {
+            setIsAuthLoading(false);
+            return;
         }
+
+        const initializeSession = async () => {
+            const { data, error } = await supabase.auth.getSession();
+            if (!error && data.session?.user) {
+                setUser(toAppUser(data.session.user));
+            }
+            setIsAuthLoading(false);
+        };
+
+        initializeSession();
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (session?.user) {
+                setUser(toAppUser(session.user));
+            } else {
+                setUser(null);
+            }
+            setIsAuthLoading(false);
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
     }, []);
 
-    const login = (email: string, password: string): boolean => {
-        const stored = localStorage.getItem('mhc_users');
-        if (stored) {
-            try {
-                const users = JSON.parse(stored) as Array<{ name: string; email: string; password: string; joinedDate: string }>;
-                const found = users.find((u) => u.email === email && u.password === password);
-                if (found) {
-                    const userData: User = { name: found.name, email: found.email, joinedDate: found.joinedDate };
-                    setUser(userData);
-                    localStorage.setItem('mhc_user', JSON.stringify(userData));
-                    return true;
-                }
-            } catch {
-                return false;
-            }
-        }
-        return false;
-    };
+    const login = async (email: string, password: string): Promise<AuthActionResult> => {
+        const supabase = getSupabaseBrowserClient();
 
-    const register = (name: string, email: string, password: string): boolean => {
-        const stored = localStorage.getItem('mhc_users');
-        let users: Array<{ name: string; email: string; password: string; joinedDate: string }> = [];
-        if (stored) {
-            try {
-                users = JSON.parse(stored);
-            } catch {
-                users = [];
-            }
+        if (!supabase) {
+            return { success: false, error: 'Supabase is not configured. Add env variables and restart the app.' };
         }
 
-        if (users.some((u) => u.email === email)) return false;
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-        const newUser = { name, email, password, joinedDate: new Date().toISOString() };
-        users.push(newUser);
-        localStorage.setItem('mhc_users', JSON.stringify(users));
+        if (error || !data.user) {
+            return { success: false, error: error?.message || 'Invalid email or password.' };
+        }
 
-        const userData: User = { name, email, joinedDate: newUser.joinedDate };
-        setUser(userData);
-        localStorage.setItem('mhc_user', JSON.stringify(userData));
-        return true;
+        setUser(toAppUser(data.user));
+        return { success: true };
     };
 
-    const logout = () => {
+    const register = async (name: string, email: string, password: string): Promise<AuthActionResult> => {
+        const supabase = getSupabaseBrowserClient();
+
+        if (!supabase) {
+            return { success: false, error: 'Supabase is not configured. Add env variables and restart the app.' };
+        }
+
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    full_name: name,
+                },
+            },
+        });
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        if (!data.session) {
+            return {
+                success: true,
+                requiresEmailVerification: true,
+            };
+        }
+
+        if (data.user) {
+            setUser(toAppUser(data.user));
+        }
+
+        return { success: true };
+    };
+
+    const logout = async () => {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+            await supabase.auth.signOut();
+        }
         setUser(null);
-        localStorage.removeItem('mhc_user');
     };
 
-    const updateProfile = (data: Partial<User>) => {
-        if (user) {
-            const updated = { ...user, ...data };
-            setUser(updated);
-            localStorage.setItem('mhc_user', JSON.stringify(updated));
+    const updateProfile = async (data: Partial<User>): Promise<AuthActionResult> => {
+        const supabase = getSupabaseBrowserClient();
+
+        if (!supabase) {
+            return { success: false, error: 'Supabase is not configured. Add env variables and restart the app.' };
         }
+
+        const updatePayload: {
+            email?: string;
+            data?: {
+                full_name?: string;
+            };
+        } = {};
+
+        if (data.email) {
+            updatePayload.email = data.email;
+        }
+
+        if (data.name) {
+            updatePayload.data = {
+                full_name: data.name,
+            };
+        }
+
+        const { data: updatedUserData, error } = await supabase.auth.updateUser(updatePayload);
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        if (updatedUserData.user) {
+            setUser(toAppUser(updatedUserData.user));
+        }
+
+        return { success: true };
     };
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout, updateProfile }}>
+        <AuthContext.Provider value={{ user, isAuthLoading, isAuthenticated: !!user, login, register, logout, updateProfile }}>
             {children}
         </AuthContext.Provider>
     );

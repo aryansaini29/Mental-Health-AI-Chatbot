@@ -23,7 +23,7 @@ export default function RegisterPage() {
 
     const strength = getPasswordStrength(password);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (!name || !email || !password || !confirmPassword) {
@@ -40,16 +40,23 @@ export default function RegisterPage() {
         }
 
         setLoading(true);
-        setTimeout(() => {
-            const success = register(name, email, password);
-            if (success) {
-                showToast('Account created successfully!', 'success');
-                router.push('/dashboard/chat');
-            } else {
-                showToast('An account with this email already exists', 'error');
-            }
+        const result = await register(name, email, password);
+
+        if (result.success && result.requiresEmailVerification) {
+            showToast('Check your email to confirm your account, then sign in.', 'success');
+            router.push('/auth/login');
             setLoading(false);
-        }, 800);
+            return;
+        }
+
+        if (result.success) {
+            showToast('Account created successfully!', 'success');
+            router.push('/dashboard/chat');
+        } else {
+            showToast(result.error || 'Unable to create account', 'error');
+        }
+
+        setLoading(false);
     };
 
     return (
