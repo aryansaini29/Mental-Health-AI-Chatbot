@@ -5,5 +5,11 @@
       "src": "mental-health-chatbot/package.json",
       "use": "@vercel/next"
     }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "mental-health-chatbot/$1"
+    }
   ]
 }
