@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "mental-health-chatbot/package.json",
+      "use": "@vercel/next"
+    }
+  ]
+}
