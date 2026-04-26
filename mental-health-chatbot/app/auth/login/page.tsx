@@ -4,35 +4,54 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { HiEnvelope, HiLockClosed, HiEye, HiEyeSlash, HiSparkles } from 'react-icons/hi2';
+import { HiEnvelope, HiShieldCheck, HiSparkles } from 'react-icons/hi2';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [remember, setRemember] = useState(false);
+    const [otp, setOtp] = useState('');
+    const [otpSent, setOtpSent] = useState(false);
     const [loading, setLoading] = useState(false);
     const router = useRouter();
-    const { login } = useAuth();
+    const { requestLoginOtp, verifyLoginOtp } = useAuth();
     const { showToast } = useToast();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!email || !password) {
-            showToast('Please fill in all fields', 'error');
+
+        if (!email) {
+            showToast('Please enter your email', 'error');
             return;
         }
 
         setLoading(true);
-        const result = await login(email, password);
-        if (result.success) {
-            showToast('Welcome back!', 'success');
-            router.push('/dashboard/chat');
+
+        if (!otpSent) {
+            const result = await requestLoginOtp(email);
+            if (result.success) {
+                setOtpSent(true);
+                showToast('OTP sent to your email', 'success');
+            } else {
+                showToast(result.error || 'Unable to send OTP', 'error');
+            }
         } else {
-            showToast(result.error || 'Invalid email or password', 'error');
+            const normalizedOtp = otp.replace(/\D/g, '');
+            if (!/^\d{8}$/.test(normalizedOtp)) {
+                showToast('OTP must be exactly 8 digits', 'error');
+                setLoading(false);
+                return;
+            }
+
+            const result = await verifyLoginOtp(email, normalizedOtp);
+            if (result.success) {
+                showToast('Welcome back!', 'success');
+                router.push('/dashboard/chat');
+            } else {
+                showToast(result.error || 'Invalid OTP code', 'error');
+            }
         }
+
         setLoading(false);
     };
 
@@ -57,7 +76,7 @@ export default function LoginPage() {
                             <span className="font-bold text-xl">MindfulAI</span>
                         </Link>
                         <h2 className="text-2xl font-bold mb-1">Welcome Back</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to continue your journey</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Sign in with a one-time code</p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
@@ -75,45 +94,39 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Password</label>
-                            <div className="relative">
-                                <HiLockClosed className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                <input
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="••••••••"
-                                    className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 outline-none focus:border-primary-400 transition-colors text-sm"
-                                />
+                        {otpSent && (
+                            <div>
+                                <label className="block text-sm font-medium mb-2">OTP Code</label>
+                                <div className="relative">
+                                    <HiShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={8}
+                                        value={otp}
+                                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                        placeholder="Enter 8-digit code"
+                                        className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/50 dark:bg-white/5 border border-gray-200 dark:border-white/10 outline-none focus:border-primary-400 transition-colors text-sm tracking-[0.2em]"
+                                    />
+                                </div>
                                 <button
                                     type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2"
+                                    onClick={async () => {
+                                        setLoading(true);
+                                        const result = await requestLoginOtp(email);
+                                        if (result.success) {
+                                            showToast('OTP resent to your email', 'success');
+                                        } else {
+                                            showToast(result.error || 'Unable to resend OTP', 'error');
+                                        }
+                                        setLoading(false);
+                                    }}
+                                    className="mt-2 text-sm text-primary-500 hover:text-primary-600 font-medium"
                                 >
-                                    {showPassword ? (
-                                        <HiEyeSlash className="w-5 h-5 text-gray-400" />
-                                    ) : (
-                                        <HiEye className="w-5 h-5 text-gray-400" />
-                                    )}
+                                    Resend OTP
                                 </button>
                             </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={remember}
-                                    onChange={(e) => setRemember(e.target.checked)}
-                                    className="w-4 h-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
-                                />
-                                <span className="text-sm text-gray-500">Remember me</span>
-                            </label>
-                            <button type="button" className="text-sm text-primary-500 hover:text-primary-600 font-medium">
-                                Forgot Password?
-                            </button>
-                        </div>
+                        )}
 
                         <motion.button
                             whileHover={{ scale: 1.02 }}
@@ -122,7 +135,7 @@ export default function LoginPage() {
                             disabled={loading}
                             className="w-full py-3 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 text-white font-semibold shadow-lg hover:shadow-xl transition-shadow disabled:opacity-60"
                         >
-                            {loading ? 'Signing in...' : 'Sign In'}
+                            {loading ? 'Please wait...' : otpSent ? 'Verify OTP' : 'Send OTP'}
                         </motion.button>
                     </form>
 

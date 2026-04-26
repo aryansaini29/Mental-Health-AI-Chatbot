@@ -67,7 +67,7 @@ export default function ChatInput({ onSend, disabled }: Props) {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Share what's on your mind..."
+                    placeholder="Ask anything..."
                     rows={1}
                     className="flex-1 resize-none bg-transparent outline-none text-sm placeholder-gray-400 dark:placeholder-gray-500 max-h-24 py-2"
                     style={{ minHeight: '36px' }}

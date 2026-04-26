@@ -40,7 +40,7 @@ export default function Sidebar({ isOpen, onClose }: Props) {
                     </div>
                     <div>
                         <h1 className="font-bold text-base">MindfulAI</h1>
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">Emotional Support</p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">AI Assistant</p>
                     </div>
                 </Link>
             </div>

@@ -176,14 +176,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 }),
             });
 
-            if (!response.ok) {
-                throw new Error('Gemini request failed');
+            const data = (await response.json()) as { reply?: string; error?: string; source?: string };
+            const assistantText = data.reply || getAIResponse(content);
+
+            if (!response.ok && !data.reply) {
+                throw new Error(data.error || 'Gemini request failed');
             }
 
-            const data = (await response.json()) as { reply?: string };
             const aiResponse: ChatMessage = {
                 id: generateId(),
-                content: data.reply || getAIResponse(content),
+                content: assistantText,
                 sender: 'ai',
                 timestamp: new Date().toISOString(),
             };

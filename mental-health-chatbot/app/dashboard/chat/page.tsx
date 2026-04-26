@@ -30,10 +30,10 @@ export default function ChatPage() {
                             <HiSparkles className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h1 className="font-bold text-lg">MindfulAI Chat</h1>
+                            <h1 className="font-bold text-lg">AI Assistant</h1>
                             <p className="text-xs text-emerald-500 flex items-center gap-1">
                                 <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                                Online • Ready to listen
+                                Online • Ready to help
                             </p>
                         </div>
                     </div>
@@ -62,13 +62,12 @@ export default function ChatPage() {
                             <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900/30 dark:to-secondary-900/30 flex items-center justify-center mb-6">
                                 <HiSparkles className="w-10 h-10 text-primary-400" />
                             </div>
-                            <h2 className="text-xl font-bold mb-2">How are you feeling today?</h2>
+                            <h2 className="text-xl font-bold mb-2">What can I help you with?</h2>
                             <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm">
-                                I&apos;m here to listen and support you. Share anything that&apos;s on your mind —
-                                this is a safe, private space just for you.
+                                Ask me anything: explain a topic, write code, draft an email, summarize text, or brainstorm ideas.
                             </p>
                             <div className="flex flex-wrap gap-2 mt-6 justify-center">
-                                {['I feel anxious today', "I'm feeling happy!", 'I need someone to talk to', 'Tell me a breathing exercise'].map((s) => (
+                                {['Explain React hooks', 'Write a professional email', 'Summarize this article', 'Give me study tips'].map((s) => (
                                     <motion.button
                                         key={s}
                                         whileHover={{ scale: 1.04 }}

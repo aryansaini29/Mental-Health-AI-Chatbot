@@ -22,7 +22,8 @@ interface AuthContextType {
     user: User | null;
     isAuthLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<AuthActionResult>;
+    requestLoginOtp: (email: string) => Promise<AuthActionResult>;
+    verifyLoginOtp: (email: string, otp: string) => Promise<AuthActionResult>;
     register: (name: string, email: string, password: string) => Promise<AuthActionResult>;
     logout: () => Promise<void>;
     updateProfile: (data: Partial<User>) => Promise<AuthActionResult>;
@@ -81,17 +82,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const login = async (email: string, password: string): Promise<AuthActionResult> => {
+    const requestLoginOtp = async (email: string): Promise<AuthActionResult> => {
         const supabase = getSupabaseBrowserClient();
 
         if (!supabase) {
             return { success: false, error: 'Supabase is not configured. Add env variables and restart the app.' };
         }
 
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithOtp({
+            email,
+            options: {
+                shouldCreateUser: false,
+            },
+        });
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        return { success: true };
+    };
+
+    const verifyLoginOtp = async (email: string, otp: string): Promise<AuthActionResult> => {
+        const supabase = getSupabaseBrowserClient();
+        const normalizedOtp = otp.replace(/\D/g, '');
+
+        if (!/^\d{8}$/.test(normalizedOtp)) {
+            return { success: false, error: 'OTP must be exactly 8 digits.' };
+        }
+
+        if (!supabase) {
+            return { success: false, error: 'Supabase is not configured. Add env variables and restart the app.' };
+        }
+
+        const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token: normalizedOtp,
+            type: 'email',
+        });
 
         if (error || !data.user) {
-            return { success: false, error: error?.message || 'Invalid email or password.' };
+            return { success: false, error: error?.message || 'Invalid verification code.' };
         }
 
         setUser(toAppUser(data.user));
@@ -179,7 +210,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, isAuthLoading, isAuthenticated: !!user, login, register, logout, updateProfile }}>
+        <AuthContext.Provider
+            value={{ user, isAuthLoading, isAuthenticated: !!user, requestLoginOtp, verifyLoginOtp, register, logout, updateProfile }}
+        >
             {children}
         </AuthContext.Provider>
     );

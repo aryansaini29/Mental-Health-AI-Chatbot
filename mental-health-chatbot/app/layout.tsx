@@ -17,9 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MindfulAI – Your AI Companion for Emotional Support",
+  title: "MindfulAI – Your AI Assistant",
   description:
-    "A modern AI-powered mental health chatbot providing 24/7 emotional support, mood tracking, and secure private conversations.",
+    "A modern Gemini-style AI assistant for general chat, writing, coding, learning, and supportive conversations.",
 };
 
 export default function RootLayout({
